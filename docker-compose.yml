@@ -1,0 +1,68 @@
+services:
+  redis:
+    image: redis:7.0
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: bravado_development
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  sidekiq:
+    build:
+      context: .
+    command: bundle exec sidekiq
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: redis://redis:6379/0
+
+  web:
+    build:
+      context: .
+    volumes:
+      - .:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - sidekiq
+      - db
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://postgres:password@db:5432/bravado_development
+      REDIS_URL: redis://redis:6379/0
+      SIDEKIQ_CONCURRENCY: 5
+      stdin_open: true
+      tty: true
+
+  test:
+    build:
+      context: .
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    environment:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:password@db:5432/bravado_test
+      REDIS_URL: redis://redis:6379/0
+    stdin_open: true
+    tty: true
+    command:
+      [
+        "sh",
+        "-c",
+        "rails db:create RAILS_ENV=test && rails db:migrate RAILS_ENV=test && rspec",
+      ]
+
+volumes:
+  db_data:
